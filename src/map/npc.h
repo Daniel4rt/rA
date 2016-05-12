@@ -7,26 +7,34 @@
 #include "map.h" // struct block_list
 #include "status.h" // struct status_change
 #include "unit.h" // struct unit_data
+
 struct block_list;
 struct npc_data;
 struct view_data;
 
-
 struct npc_timerevent_list {
 	int timer,pos;
 };
+
 struct npc_label_list {
 	char name[NAME_LENGTH];
 	int pos;
 };
+
+/// Item list for NPC sell/buy list
 struct npc_item_list {
-	unsigned int nameid,value;
+	unsigned short nameid;
+	unsigned int value;
+#if PACKETVER >= 20131223
+	unsigned short qty; ///< Stock counter (Market shop)
+	uint8 flag; ///< 1: Item added by npcshopitem/npcshopadditem, force load! (Market shop)
+#endif
 };
 
-struct graveyard_info {
-	char name[NAME_LENGTH]; // Name of the Victim
-	char killed_by[NAME_LENGTH];
-	time_t killed_time;
+/// List of bought/sold item for NPC shops
+struct s_npc_buy_list {
+	unsigned short qty;		///< Amount of item will be bought
+	unsigned short nameid;	///< ID of item will be bought
 };
 
 struct npc_data {
@@ -41,13 +49,13 @@ struct npc_data {
 	int chat_id,touching_id;
 	unsigned int next_walktime;
 
-	short cashitem; // PShop
 	unsigned size : 2;
 
 	struct status_data status;
 	unsigned int level,stat_point;
-
-	struct graveyard_info graveyard; // Graveyard System
+	struct s_npc_params {
+		unsigned short str, agi, vit, int_, dex, luk;
+	} params;
 
 	void* chatdb; // pointer to a npc_parse struct (see npc_chat.c)
 	char* path;/* path dir */
@@ -57,7 +65,7 @@ struct npc_data {
 		struct {
 			struct script_code *script;
 			short xs,ys; // OnTouch area radius
-			int guild_id, bg_id, faction_id;
+			int guild_id, bg_id;
 			int timer,timerid,timeramount,rid;
 			unsigned int timertick;
 			struct npc_timerevent_list *timer_event;
@@ -65,10 +73,11 @@ struct npc_data {
 			struct npc_label_list *label_list;
 		} scr;
 		struct {
-			struct npc_item_list* shop_item;
-			int count;
-			char *cash_var, *point_var;
-			short cash_vartype, point_vartype; //1 = ##, 2 = #, 3 = Character
+			struct npc_item_list *shop_item;
+			uint16 count;
+			unsigned short itemshop_nameid; // Item Shop cost item ID
+			char pointshop_str[32]; // Point Shop cost variable name
+			bool discount;
 		} shop;
 		struct {
 			short xs,ys; // OnTouch area radius
@@ -82,8 +91,6 @@ struct npc_data {
 		} tomb;
 	} u;
 };
-
-
 
 #define START_NPC_NUM 110000000
 
@@ -100,7 +107,7 @@ enum actor_classes
 #define MAX_NPC_CLASS 1000
 // New NPC range
 #define MAX_NPC_CLASS2_START 10000
-#define MAX_NPC_CLASS2_END 10049
+#define MAX_NPC_CLASS2_END 10203
 
 //Checks if a given id is a valid npc id. [Skotlex]
 //Since new npcs are added all the time, the max valid value is the one before the first mob (Scorpion = 1001)
@@ -120,6 +127,7 @@ enum npce_event {
 	NPCE_DIE,
 	NPCE_KILLPC,
 	NPCE_KILLNPC,
+	NPCE_STATCALC,
 	NPCE_MAX
 };
 struct view_data* npc_get_viewdata(int class_);
@@ -134,9 +142,10 @@ int npc_click(struct map_session_data* sd, struct npc_data* nd);
 int npc_scriptcont(struct map_session_data* sd, int id, bool closing);
 struct npc_data* npc_checknear(struct map_session_data* sd, struct block_list* bl);
 int npc_buysellsel(struct map_session_data* sd, int id, int type);
-int npc_buylist(struct map_session_data* sd,int n, unsigned short* item_list);
-int npc_selllist(struct map_session_data* sd, int n, unsigned short* item_list);
+uint8 npc_buylist(struct map_session_data* sd, uint16 n, struct s_npc_buy_list *item_list);
+uint8 npc_selllist(struct map_session_data* sd, int n, unsigned short *item_list);
 void npc_parse_mob2(struct spawn_data* mob);
+bool npc_viewisid(const char * viewid);
 struct npc_data* npc_add_warp(char* name, short from_mapid, short from_x, short from_y, short xs, short ys, unsigned short to_mapindex, short to_x, short to_y);
 int npc_globalmessage(const char* name,const char* mes);
 
@@ -152,16 +161,17 @@ bool npc_isnear(struct block_list * bl);
 
 int npc_get_new_npc_id(void);
 
-void npc_addsrcfile(const char* name);
+int npc_addsrcfile(const char* name);
 void npc_delsrcfile(const char* name);
-void npc_parsesrcfile(const char* filepath, bool runOnInit);
+int npc_parsesrcfile(const char* filepath, bool runOnInit);
 void do_clear_npc(void);
-int do_final_npc(void);
-int do_init_npc(void);
+void do_final_npc(void);
+void do_init_npc(void);
 void npc_event_do_oninit(void);
 int npc_do_ontimer(int npc_id, int option);
 
 int npc_event_do(const char* name);
+int npc_event_do_id(const char* name, int rid);
 int npc_event_doall(const char* name);
 int npc_event_doall_id(const char* name, int rid);
 
@@ -177,16 +187,19 @@ int npc_reload(void);
 void npc_read_event_script(void);
 int npc_script_event(struct map_session_data* sd, enum npce_event type);
 
-void npc_duplicate4graveyard(struct block_list* bl, struct block_list* sbl);
 int npc_duplicate4instance(struct npc_data *snd, int16 m);
 int npc_instanceinit(struct npc_data* nd);
-int npc_cashshop_buy(struct map_session_data *sd, int nameid, int amount, int points);
-
-int npc_do_atcmd_event(struct map_session_data* sd, const char* command, const char* message, const char* eventname);
+int npc_cashshop_buy(struct map_session_data *sd, unsigned short nameid, int amount, int points);
 
 extern struct npc_data* fake_nd;
 
 int npc_cashshop_buylist(struct map_session_data *sd, int points, int count, unsigned short* item_list);
+bool npc_shop_discount(enum npc_subtype type, bool discount);
+
+#if PACKETVER >= 20131223
+void npc_market_tosql(const char *exname, struct npc_item_list *list);
+void npc_market_delfromsql_(const char *exname, unsigned short nameid, bool clear);
+#endif
 
 #ifdef SECURE_NPCTIMEOUT
 	int npc_rr_secure_timeout_timer(int tid, unsigned int tick, int id, intptr_t data);

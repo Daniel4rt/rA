@@ -1,18 +1,15 @@
 // Copyright (c) Athena Dev Teams - Licensed under GNU GPL
 // For more information, see LICENCE in the main folder
 
-#include "../common/cbasetypes.h"
-#include "../common/des.h"
-#include "../common/malloc.h"
-#include "../common/showmsg.h"
-#include "../common/strlib.h"
-#include "../common/utils.h"
+#include "cbasetypes.h"
+#include "des.h"
+#include "malloc.h"
+#include "showmsg.h"
+#include "strlib.h"
+#include "utils.h"
 #include "grfio.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
 #include <zlib.h>
 
 //----------------------------
@@ -300,9 +297,9 @@ static FILELIST* filelist_find(const char* fname)
 // returns the original file name
 char* grfio_find_file(const char* fname)
 {
-	FILELIST *filelist = filelist_find(fname);
-	if (!filelist) return NULL;
-	return (!filelist->fnd ? filelist->fn : filelist->fnd);
+	FILELIST *filelist_res = filelist_find(fname);
+	if (!filelist_res) return NULL;
+	return (!filelist_res->fnd ? filelist_res->fn : filelist_res->fnd);
 }
 
 // adds a FILELIST entry into the list of loaded files
@@ -640,7 +637,7 @@ static bool grfio_parse_restable_row(const char* row)
 	char local[256];
 	FILELIST* entry;
 
-	if( sscanf(row, "%[^#\r\n]#%[^#\r\n]#", w1, w2) != 2 )
+	if( sscanf(row, "%255[^#\r\n]#%255[^#\r\n]#", w1, w2) != 2 )
 		return false;
 
 	if( strstr(w2, ".gat") == NULL && strstr(w2, ".rsw") == NULL )
@@ -790,7 +787,7 @@ void grfio_init(const char* fname)
 			if( line[0] == '/' && line[1] == '/' )
 				continue; // skip comments
 
-			if( sscanf(line, "%[^:]: %[^\r\n]", w1, w2) != 2 )
+			if( sscanf(line, "%1023[^:]: %1023[^\r\n]", w1, w2) != 2 )
 				continue; // skip unrecognized lines
 
 			// Entry table reading

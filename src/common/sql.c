@@ -1,18 +1,17 @@
 // Copyright (c) Athena Dev Teams - Licensed under GNU GPL
 // For more information, see LICENCE in the main folder
 
-#include "../common/cbasetypes.h"
-#include "../common/malloc.h"
-#include "../common/showmsg.h"
-#include "../common/strlib.h"
-#include "../common/timer.h"
+#include "cbasetypes.h"
+#include "malloc.h"
+#include "showmsg.h"
+#include "strlib.h"
+#include "timer.h"
 #include "sql.h"
 
 #ifdef WIN32
-#include "../common/winapi.h"
+#include "winapi.h"
 #endif
 #include <mysql.h>
-#include <string.h>// strlen/strnlen/memcpy/memset
 #include <stdlib.h>// strtoul
 
 #define SQL_CONF_NAME "conf/inter_athena.conf"
@@ -87,7 +86,16 @@ Sql* Sql_Malloc(void)
 
 static int Sql_P_Keepalive(Sql* self);
 
-/// Establishes a connection.
+/**
+ * Establishes a connection to schema
+ * @param self : sql handle
+ * @param user : username to access
+ * @param passwd : password
+ * @param host : hostname
+ * @param port : port
+ * @param db : schema name
+ * @return 
+ */
 int Sql_Connect(Sql* self, const char* user, const char* passwd, const char* host, uint16 port, const char* db)
 {
 	if( self == NULL )
@@ -167,7 +175,7 @@ int Sql_GetColumnNames(Sql* self, const char* table, char* out_buf, size_t buf_l
 /// Changes the encoding of the connection.
 int Sql_SetEncoding(Sql* self, const char* encoding)
 {
-	if( self && mysql_set_character_set(&self->handle, encoding) == 0 )
+	if( self && Sql_Query(self, "SET NAMES %s", encoding) == 0 )
 		return SQL_SUCCESS;
 	return SQL_ERROR;
 }
@@ -833,8 +841,6 @@ int SqlStmt_NextRow(SqlStmt* self)
 	int err;
 	size_t i;
 	size_t cols;
-	MYSQL_BIND* column;
-	unsigned long length;
 
 	if( self == NULL )
 		return SQL_ERROR;
@@ -864,7 +870,7 @@ int SqlStmt_NextRow(SqlStmt* self)
 		cols = SqlStmt_NumColumns(self);
 		for( i = 0; i < cols; ++i )
 		{
-			column = &self->columns[i];
+			MYSQL_BIND* column = &self->columns[i];
 			column->error = &truncated;
 			mysql_stmt_fetch_column(self->stmt, column, (unsigned int)i, 0);
 			column->error = NULL;
@@ -889,8 +895,8 @@ int SqlStmt_NextRow(SqlStmt* self)
 	cols = SqlStmt_NumColumns(self);
 	for( i = 0; i < cols; ++i )
 	{
-		length = self->column_lengths[i].length;
-		column = &self->columns[i];
+		unsigned long length = self->column_lengths[i].length;
+		MYSQL_BIND* column = &self->columns[i];
 #if !defined(MYSQL_DATA_TRUNCATED)
 		// MySQL 4.1/(below?) returns success even if data is truncated, so we test truncation manually [FlavioJS]
 		if( column->buffer_length < length )
@@ -965,10 +971,10 @@ void SqlStmt_Free(SqlStmt* self)
 
 /// Receives MySQL error codes during runtime (not on first-time-connects).
 void ra_mysql_error_handler(unsigned int ecode) {
-	static unsigned int retry = 1;
 	switch( ecode ) {
 		case 2003:// Can't connect to MySQL (this error only happens here when failing to reconnect)
 			if( mysql_reconnect_type == 1 ) {
+				static unsigned int retry = 1;
 				if( ++retry > mysql_reconnect_count ) {
 					ShowFatalError("MySQL has been unreachable for too long, %d reconnects were attempted. Shutting Down\n", retry);
 					exit(EXIT_FAILURE);
@@ -979,7 +985,6 @@ void ra_mysql_error_handler(unsigned int ecode) {
 }
 
 void Sql_inter_server_read(const char* cfgName, bool first) {
-	int i;
 	char line[1024], w1[1024], w2[1024];
 	FILE* fp;
 
@@ -994,7 +999,7 @@ void Sql_inter_server_read(const char* cfgName, bool first) {
 	}
 
 	while(fgets(line, sizeof(line), fp)) {
-		i = sscanf(line, "%[^:]: %[^\r\n]", w1, w2);
+		int i = sscanf(line, "%1023[^:]: %1023[^\r\n]", w1, w2);
 		if(i != 2)
 			continue;
 

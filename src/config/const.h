@@ -3,8 +3,6 @@
 #ifndef _RRCONFIGS_CONST_
 #define _RRCONFIGS_CONST_
 
-#include "../config/secure.h"
-
 /**
  * rAthena configuration file (http://rathena.org)
  * For detailed guidance on these check http://rathena.org/wiki/SRC/config/
@@ -38,6 +36,8 @@
 #else
 	#define DBPATH "pre-re/"
 #endif
+
+#define DBIMPORT "import"
 
 /**
  * DefType
@@ -86,14 +86,6 @@
 	#define RE_LVL_TMDMOD()
 #endif
 
-/* Feb 1st 2012 */
-#if PACKETVER >= 20120201
-	#define NEW_CARTS
-	#define MAX_CARTS 9
-#else
-	#define MAX_CARTS 5
-#endif
-
 // Renewal variable cast time reduction
 #ifdef RENEWAL_CAST
 	#define VARCAST_REDUCTION(val){ \
@@ -101,6 +93,21 @@
 			time = time * (1 - (float)min(val, 100) / 100); \
 	}
 #endif
+
+/**
+ * Default coordinate for new char
+ * That map should be loaded by a mapserv
+ **/
+#ifdef RENEWAL
+    #define MAP_DEFAULT_NAME "iz_int"
+    #define MAP_DEFAULT_X 97
+    #define MAP_DEFAULT_Y 90
+#else
+    #define MAP_DEFAULT_NAME "new_1-1"
+    #define MAP_DEFAULT_X 53
+    #define MAP_DEFAULT_Y 111
+#endif
+
 /**
  * End of File
  **/

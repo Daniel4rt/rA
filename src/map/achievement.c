@@ -1,14 +1,3 @@
-// (c) 2008 - 2011 eAmod Project; Andres Garbanzo / Zephyrus
-//
-//  - gaiaro.staff@yahoo.com
-//  - MSN andresjgm.cr@hotmail.com
-//  - Skype: Zephyrus_cr
-//  - Site: http://dev.terra-gaming.com
-//
-// This file is NOT public - you are not allowed to distribute it.
-// Authorized Server List : http://dev.terra-gaming.com/index.php?/topic/72-authorized-eamod-servers/
-// eAmod is a non Free, extended version of eAthena Ragnarok Private Server.
-
 #include "../common/db.h"
 #include "../common/malloc.h"
 #include "../common/nullpo.h"
@@ -100,13 +89,13 @@ void achievement_complete(struct map_session_data* sd, struct achievement_data* 
 	}
 
 	// Announcement
-	sprintf(output,msg_txt(sd,709),ad->name);
+	sprintf(output,msg_txt(sd,759),ad->name);
 	clif_broadcast2(&sd->bl,output,strlen(output)+1,0x00CCFF,0x190,12,0,0,SELF);
 	clif_specialeffect(&sd->bl,488,AREA);
 
 	if( ad->cutin != NULL && *ad->cutin != '\0' )
 	{
-		clif_cutin(sd,ad->cutin,1);
+		clif_cutin(sd,ad->cutin,4);
 		if( sd->achievement_cutin_timer != INVALID_TIMER )
 			delete_timer(sd->achievement_cutin_timer,achievement_delete_cutin_timer);
 		sd->achievement_cutin_timer = add_timer(gettick() + 5000,achievement_delete_cutin_timer,sd->bl.id,0);
@@ -214,11 +203,11 @@ static int achievement_validate(DBKey key, DBData *data, va_list ap)
 	case AT_PC_KILL:
 	case AT_PC_DAMAGE_DONE:
 		{
-			ARR_FIND(0,ad->objectives,i,ad->ao[i].count && sad->count[i] < ad->ao[i].count && (
+/*			ARR_FIND(0,ad->objectives,i,ad->ao[i].count && sad->count[i] < ad->ao[i].count && (
 				(ad->ao[i].value == 0 && map[sd->bl.m].flag.pvp) ||
 				(ad->ao[i].value == 1 && map_allowed_woe(sd->bl.m)) ||
 				(ad->ao[i].value == 2 && map[sd->bl.m].flag.battleground) ||
-				(ad->ao[i].value == 3 && sd->state.pvpmode) || ad->ao[i].value == 4));
+				(ad->ao[i].value == 3 && sd->state.pvpmode) || ad->ao[i].value == 4)); */
 			if( i < ad->objectives )
 			{
 				changed = true;
@@ -461,7 +450,7 @@ static bool achievement_read_achievementdb(char* str[], int columns, int current
 void achievement_db_load(bool clear)
 {
 	if( clear ) achievement_db->clear(achievement_db,NULL);
-	sv_readdb(db_path, "achievement_db.txt", ',', 9, 9 + (ACHIEVEMENT_OBJETIVE_MAX * 2), -1, &achievement_read_achievementdb);
+	sv_readdb(db_path, "achievement_db.txt", ',', 9, 9 + (ACHIEVEMENT_OBJETIVE_MAX * 2), -1, &achievement_read_achievementdb, false);
 }
 
 void do_init_achievement(void)

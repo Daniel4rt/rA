@@ -4,7 +4,6 @@
 #include "../common/conf.h"
 #include "../common/db.h"
 #include "../common/malloc.h"
-#include "../common/nullpo.h"
 #include "../common/showmsg.h"
 #include "../common/strlib.h" // strcmp
 #include "../common/socket.h"
@@ -12,7 +11,6 @@
 #include "atcommand.h" // AtCommandType
 #include "pc_groups.h"
 #include "pc.h" // e_pc_permission
-
 
 typedef struct GroupSettings GroupSettings;
 
@@ -143,22 +141,22 @@ static void read_config(void)
 		
 		// Check if all commands and permissions exist
 		iter = db_iterator(pc_group_db);
-		for (group_settings = dbi_first(iter); dbi_exists(iter); group_settings = dbi_next(iter)) {
+		for (group_settings = (GroupSettings *)dbi_first(iter); dbi_exists(iter); group_settings = (GroupSettings *)dbi_next(iter)) {
 			config_setting_t *commands = group_settings->commands, *permissions = group_settings->permissions;
-			int count = 0, i;
+			int count = 0, j;
 
 			// Make sure there is "commands" group
 			if (commands == NULL)
 				commands = group_settings->commands = config_setting_add(group_settings->root, "commands", CONFIG_TYPE_GROUP);
 			count = config_setting_length(commands);
 
-			for (i = 0; i < count; ++i) {
-				config_setting_t *command = config_setting_get_elem(commands, i);
+			for (j = 0; j < count; ++j) {
+				config_setting_t *command = config_setting_get_elem(commands, j);
 				const char *name = config_setting_name(command);
 				if (!atcommand_exists(name)) {
 					ShowConfigWarning(command, "pc_groups:read_config: non-existent command name '%s', removing...", name);
 					config_setting_remove(commands, name);
-					--i;
+					--j;
 					--count;
 				}
 			}
@@ -168,16 +166,16 @@ static void read_config(void)
 				permissions = group_settings->permissions = config_setting_add(group_settings->root, "permissions", CONFIG_TYPE_GROUP);
 			count = config_setting_length(permissions);
 
-			for(i = 0; i < count; ++i) {
-				config_setting_t *permission = config_setting_get_elem(permissions, i);
+			for(j = 0; j < count; ++j) {
+				config_setting_t *permission = config_setting_get_elem(permissions, j);
 				const char *name = config_setting_name(permission);
-				int j;
+				int p;
 
-				ARR_FIND(0, ARRAYLENGTH(pc_g_permission_name), j, strcmp(pc_g_permission_name[j].name, name) == 0);
-				if (j == ARRAYLENGTH(pc_g_permission_name)) {
+				ARR_FIND(0, ARRAYLENGTH(pc_g_permission_name), p, strcmp(pc_g_permission_name[p].name, name) == 0);
+				if (p == ARRAYLENGTH(pc_g_permission_name)) {
 					ShowConfigWarning(permission, "pc_groups:read_config: non-existent permission name '%s', removing...", name);
 					config_setting_remove(permissions, name);
-					--i;
+					--p;
 					--count;
 				}
 			}
@@ -188,7 +186,7 @@ static void read_config(void)
 		i = 0; // counter for processed groups
 		while (i < group_count) {
 			iter = db_iterator(pc_group_db);
-			for (group_settings = dbi_first(iter); dbi_exists(iter); group_settings = dbi_next(iter)) {
+			for (group_settings = (GroupSettings *)dbi_first(iter); dbi_exists(iter); group_settings = (GroupSettings *)dbi_next(iter)) {
 				config_setting_t *inherit = NULL,
 				                 *commands = group_settings->commands,
 					             *permissions = group_settings->permissions;
@@ -223,15 +221,15 @@ static void read_config(void)
 
 					// Copy settings (commands/permissions) that are not defined yet
 					if (inherited_group->commands != NULL) {
-						int i = 0, commands_count = config_setting_length(inherited_group->commands);
-						for (i = 0; i < commands_count; ++i)
-							config_setting_copy(commands, config_setting_get_elem(inherited_group->commands, i));
+						int l = 0, commands_count = config_setting_length(inherited_group->commands);
+						for (l = 0; l < commands_count; ++l)
+							config_setting_copy(commands, config_setting_get_elem(inherited_group->commands, l));
 					}
 
 					if (inherited_group->permissions != NULL) {
-						int i = 0, permissions_count = config_setting_length(inherited_group->permissions);
-						for (i = 0; i < permissions_count; ++i)
-							config_setting_copy(permissions, config_setting_get_elem(inherited_group->permissions, i));
+						int l = 0, permissions_count = config_setting_length(inherited_group->permissions);
+						for (l = 0; l < permissions_count; ++l)
+							config_setting_copy(permissions, config_setting_get_elem(inherited_group->permissions, l));
 					}
 
 					++done; // copied commands and permissions from one of inherited groups
@@ -253,12 +251,12 @@ static void read_config(void)
 
 		// Pack permissions into GroupSettings.e_permissions for faster checking
 		iter = db_iterator(pc_group_db);
-		for (group_settings = dbi_first(iter); dbi_exists(iter); group_settings = dbi_next(iter)) {
+		for (group_settings = (GroupSettings *)dbi_first(iter); dbi_exists(iter); group_settings = (GroupSettings *)dbi_next(iter)) {
 			config_setting_t *permissions = group_settings->permissions;
-			int i, count = config_setting_length(permissions);
+			int c, count = config_setting_length(permissions);
 
-			for (i = 0; i < count; ++i) {
-				config_setting_t *perm = config_setting_get_elem(permissions, i);
+			for (c = 0; c < count; ++c) {
+				config_setting_t *perm = config_setting_get_elem(permissions, c);
 				const char *name = config_setting_name(perm);
 				int val = config_setting_get_bool(perm);
 				int j;
@@ -278,9 +276,9 @@ static void read_config(void)
 	if( ( pc_group_max = group_count ) ) {
 		DBIterator *iter = db_iterator(pc_group_db);
 		GroupSettings *group_settings = NULL;
-		int* group_ids = aMalloc( pc_group_max * sizeof(int) );
+		int* group_ids = (int*)aMalloc( pc_group_max * sizeof(int) );
 		int i = 0;
-		for (group_settings = dbi_first(iter); dbi_exists(iter); group_settings = dbi_next(iter)) {
+		for (group_settings = (GroupSettings *)dbi_first(iter); dbi_exists(iter); group_settings = (GroupSettings *)dbi_next(iter)) {
 			group_ids[i++] = group_settings->id;
 		}
 		
@@ -344,6 +342,10 @@ bool pc_group_can_use_command(int group_id, const char *command, AtCommandType t
 	}
 	return false;
 }
+/**
+ * Load permission for player based on group id
+ * @param sd Player
+ */
 void pc_group_pc_load(struct map_session_data * sd) {
 	GroupSettings *group = NULL;
 	if ((group = id2group(sd->group_id)) == NULL) {
@@ -366,9 +368,7 @@ void pc_group_pc_load(struct map_session_data * sd) {
 bool pc_group_has_permission(int group_id, int permission)
 {
 	GroupSettings *group = NULL;
-	if ((group = id2group(group_id)) == NULL) 
-		return false;
-	return ((group->e_permissions&permission) != 0);
+	return (group = id2group(group_id)) == NULL ? false : (group->e_permissions&permission) != 0;
 }
 
 /**
@@ -378,9 +378,7 @@ bool pc_group_has_permission(int group_id, int permission)
 bool pc_group_should_log_commands(int group_id)
 {
 	GroupSettings *group = NULL;
-	if ((group = id2group(group_id)) == NULL) 
-		return false;
-	return group->log_commands;
+	return (group = id2group(group_id)) == NULL ? false : group->log_commands;
 }
 
 /**
@@ -430,12 +428,6 @@ void do_init_pc_groups(void)
 	pc_group_db = idb_alloc(DB_OPT_RELEASE_DATA);
 	pc_groupname_db = stridb_alloc(DB_OPT_DUP_KEY, 0);
 	read_config();
-
-	if( battle_config.premium_group_id && !pc_group_exists(battle_config.premium_group_id) )
-	{
-		battle_config.premium_group_id = 0;
-		ShowWarning("conf/battle/eAmod.conf premium_group_id is enabled but group dont exist, disabling...\n");
-	}
 }
 
 /**
@@ -469,6 +461,4 @@ void pc_groups_reload(void) {
 		pc_group_pc_load(sd);
 	}
 	mapit_free(iter);
-
-	
 }

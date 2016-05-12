@@ -3,47 +3,33 @@
 
 #include "../common/cbasetypes.h"
 #include "../common/malloc.h"
-#include "../common/socket.h"
 #include "../common/timer.h"
 #include "../common/nullpo.h"
 #include "../common/mmo.h"
 #include "../common/showmsg.h"
-#include "../common/utils.h"
 #include "../common/random.h"
 #include "../common/strlib.h"
+#include "../common/utils.h"
 
 #include "log.h"
 #include "clif.h"
-#include "chrif.h"
 #include "intif.h"
 #include "itemdb.h"
-#include "map.h"
 #include "pc.h"
-#include "status.h"
-#include "skill.h"
-#include "mob.h"
-#include "pet.h"
-#include "battle.h"
 #include "party.h"
-#include "guild.h"
-#include "atcommand.h"
-#include "script.h"
-#include "npc.h"
 #include "trade.h"
-#include "unit.h"
 #include "elemental.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
 
 struct s_elemental_db elemental_db[MAX_ELEMENTAL_CLASS]; // Elemental Database
+static uint16 elemental_count;
 
 int elemental_search_index(int class_) {
 	int i;
-	ARR_FIND(0, MAX_ELEMENTAL_CLASS, i, elemental_db[i].class_ == class_);
-	return (i == MAX_ELEMENTAL_CLASS)?-1:i;
+	ARR_FIND(0, elemental_count, i, elemental_db[i].class_ == class_);
+	return (i == elemental_count)?-1:i;
 }
 
 bool elemental_class(int class_) {
@@ -77,13 +63,13 @@ int elemental_create(struct map_session_data *sd, int class_, unsigned int lifet
 	i = db->status.size+1; // summon level
 
 	//[(Caster's Max HP/ 3 ) + (Caster's INT x 10 )+ (Caster's Job Level x 20 )] x [(Elemental Summon Level + 2) / 3]
-	ele.hp = ele.max_hp = (sd->battle_status.max_hp/3 + sd->battle_status.int_*10 + sd->status.job_level) * ((i + 2) / 3);
+	ele.hp = ele.max_hp = (sd->battle_status.max_hp/3 + sd->battle_status.int_*10 + sd->status.job_level*20) * ((i + 2) / 3);
 	//Caster's Max SP /4
 	ele.sp = ele.max_sp = sd->battle_status.max_sp/4;
 	//Caster's [ Max SP / (18 / Elemental Summon Skill Level) 1- 100 ]
 	ele.atk = (sd->battle_status.max_sp / (18 / i)  * 1 - 100);
 	//Caster's [ Max SP / (18 / Elemental Summon Skill Level) ]
-	ele.atk2 = sd->battle_status.max_sp / 18;
+	ele.atk2 = sd->battle_status.max_sp / (18 / i);
 	//Caster's HIT + (Caster's Base Level)
 	ele.hit = sd->battle_status.hit + sd->status.base_level;
 	//[Elemental Summon Skill Level x (Caster's INT / 2 + Caster's DEX / 4)]
@@ -96,29 +82,27 @@ int elemental_create(struct map_session_data *sd, int class_, unsigned int lifet
 	ele.mdef = sd->battle_status.mdef + sd->battle_status.int_ / (5-i);
 	//Caster's FLEE + (Caster's Base Level / (5 - Elemental Summon Skill Level)
 	ele.flee = sd->status.base_level / (5-i);
-	//Caster's HIT + (Caster's Base Level)
-	ele.hit = sd->battle_status.hit + sd->status.base_level;
 
 	//per individual bonuses
 	switch(db->class_){
-	case 2114:	case 2115:
-	case 2116: //ATK + (Summon Agni Skill Level x 20) / HIT + (Summon Agni Skill Level x 10)
+	case ELEMENTALID_AGNI_S:	case ELEMENTALID_AGNI_M:
+	case ELEMENTALID_AGNI_L: //ATK + (Summon Agni Skill Level x 20) / HIT + (Summon Agni Skill Level x 10)
 		ele.atk += i * 20;
 		ele.atk2 += i * 20;
 		ele.hit += i * 10;
 		break;
-	case 2117:	case 2118:
-	case 2119: //MDEF + (Summon Aqua Skill Level x 10) / MATK + (Summon Aqua Skill Level x 20)
+	case ELEMENTALID_AQUA_S:	case ELEMENTALID_AQUA_M:
+	case ELEMENTALID_AQUA_L: //MDEF + (Summon Aqua Skill Level x 10) / MATK + (Summon Aqua Skill Level x 20)
 		ele.mdef += i * 10;
 		ele.matk += i * 20;
 		break;
-	case 2120:	case 2121:
-	case 2122: //FLEE + (Summon Ventus Skill Level x 20) / MATK + (Summon Ventus Skill Level x 10)
+	case ELEMENTALID_VENTUS_S:	case ELEMENTALID_VENTUS_M:
+	case ELEMENTALID_VENTUS_L: //FLEE + (Summon Ventus Skill Level x 20) / MATK + (Summon Ventus Skill Level x 10)
 		ele.flee += i * 20;
 		ele.matk += i * 10;
 		break;
-	case 2123:	case 2124:
-	case 2125: //DEF + (Summon Tera Skill Level x 25) / ATK + (Summon Tera Skill Level x 5)
+	case ELEMENTALID_TERA_S:	case ELEMENTALID_TERA_M:
+	case ELEMENTALID_TERA_L: //DEF + (Summon Tera Skill Level x 25) / ATK + (Summon Tera Skill Level x 5)
 		ele.def += i * 25;
 		ele.atk += i * 5;
 		ele.atk2 += i * 5;
@@ -126,8 +110,8 @@ int elemental_create(struct map_session_data *sd, int class_, unsigned int lifet
 	}
 
 	if( (i=pc_checkskill(sd,SO_EL_SYMPATHY)) > 0 ){
-		ele.hp = ele.max_hp = ele.max_hp * 5 * i / 100;
-		ele.sp = ele.max_sp = ele.max_sp * 5 * i / 100;
+		ele.hp = ele.max_hp += ele.max_hp * 5 * i / 100;
+		ele.sp = ele.max_sp += ele.max_sp * 5 * i / 100;
 		ele.atk += 25 * i;
 		ele.atk2 += 25 * i;
 		ele.matk += 25 * i;
@@ -183,7 +167,7 @@ static int elemental_summon_end(int tid, unsigned int tick, int id, intptr_t dat
 	}
 
 	ed->summon_timer = INVALID_TIMER;
-	elemental_delete(ed, 0); // Elemental's summon time is over.
+	elemental_delete(ed); // Elemental's summon time is over.
 
 	return 0;
 }
@@ -195,7 +179,7 @@ void elemental_summon_stop(struct elemental_data *ed) {
 	ed->summon_timer = INVALID_TIMER;
 }
 
-int elemental_delete(struct elemental_data *ed, int reply) {
+int elemental_delete(struct elemental_data *ed) {
 	struct map_session_data *sd;
 
 	nullpo_ret(ed);
@@ -207,12 +191,12 @@ int elemental_delete(struct elemental_data *ed, int reply) {
 	elemental_summon_stop(ed);
 
 	if( !sd )
-		return unit_free(&ed->bl, 0);
+		return unit_free(&ed->bl, CLR_OUTSIGHT);
 
 	sd->ed = NULL;
 	sd->status.ele_id = 0;
 
-	return unit_remove_map(&ed->bl, 0);
+	return unit_remove_map(&ed->bl, CLR_OUTSIGHT);
 }
 
 void elemental_summon_init(struct elemental_data *ed) {
@@ -222,6 +206,12 @@ void elemental_summon_init(struct elemental_data *ed) {
 	ed->regen.state.block = 0;
 }
 
+/**
+ * Inter-serv has sent us the elemental data from sql, fill it in map-serv memory
+ * @param ele : The elemental data received from char-serv
+ * @param flag : 0:not created, 1:was saved/loaded
+ * @return 0:failed, 1:sucess
+ */
 int elemental_data_received(struct s_elemental *ele, bool flag) {
 	struct map_session_data *sd;
 	struct elemental_data *ed;
@@ -258,7 +248,7 @@ int elemental_data_received(struct s_elemental *ele, bool flag) {
 		ed->bl.y = ed->ud.to_y;
 
 		map_addiddb(&ed->bl);
-		status_calc_elemental(ed,1);
+		status_calc_elemental(ed,SCO_FIRST);
 		ed->last_spdrain_time = ed->last_thinktime = gettick();
 		ed->summon_timer = INVALID_TIMER;
 		ed->masterteleport_timer = INVALID_TIMER;
@@ -271,7 +261,8 @@ int elemental_data_received(struct s_elemental *ele, bool flag) {
 	sd->status.ele_id = ele->elemental_id;
 
 	if( ed->bl.prev == NULL && sd->bl.prev != NULL ) {
-		map_addblock(&ed->bl);
+		if(map_addblock(&ed->bl))
+			return 0;
 		clif_spawn(&ed->bl);
 		clif_elemental_info(sd);
 		clif_elemental_updatestatus(sd,SP_HP);
@@ -470,7 +461,7 @@ int elemental_action(struct elemental_data *ed, struct block_list *bl, unsigned 
  * Action that elemental perform after changing mode.
  * Activates one of the skills of the new mode.
  *-------------------------------------------------------------*/
-int elemental_change_mode_ack(struct elemental_data *ed, int mode) {
+int elemental_change_mode_ack(struct elemental_data *ed, enum elemental_skillmode skill_mode) {
 	struct block_list *bl = &ed->master->bl;
 	uint16 skill_id, skill_lv;
 	int i;
@@ -481,7 +472,7 @@ int elemental_change_mode_ack(struct elemental_data *ed, int mode) {
 		return 0;
 
 	// Select a skill.
-	ARR_FIND(0, MAX_ELESKILLTREE, i, ed->db->skill[i].id && (ed->db->skill[i].mode&mode));
+	ARR_FIND(0, MAX_ELESKILLTREE, i, ed->db->skill[i].id && (ed->db->skill[i].mode&skill_mode));
 	if( i == MAX_ELESKILLTREE )
 		return 0;
 
@@ -512,7 +503,9 @@ int elemental_change_mode_ack(struct elemental_data *ed, int mode) {
 /*===============================================================
  * Change elemental mode.
  *-------------------------------------------------------------*/
-int elemental_change_mode(struct elemental_data *ed, int mode) {
+int elemental_change_mode(struct elemental_data *ed, enum e_mode mode) {
+	enum elemental_skillmode skill_mode;
+
 	nullpo_ret(ed);
 
 	// Remove target
@@ -524,17 +517,19 @@ int elemental_change_mode(struct elemental_data *ed, int mode) {
 	ed->battle_status.mode = ed->elemental.mode = mode;
 
 	// Normalize elemental mode to elemental skill mode.
-	if( mode == EL_MODE_AGGRESSIVE ) mode = EL_SKILLMODE_AGGRESSIVE;	// Aggressive spirit mode -> Aggressive spirit skill.
-	else if( mode == EL_MODE_ASSIST ) mode = EL_SKILLMODE_ASSIST;		// Assist spirit mode -> Assist spirit skill.
-	else mode = EL_SKILLMODE_PASIVE;									// Passive spirit mode -> Passive spirit skill.
+	if( mode == EL_MODE_AGGRESSIVE ) skill_mode = EL_SKILLMODE_AGGRESSIVE;	// Aggressive spirit mode -> Aggressive spirit skill.
+	else if( mode == EL_MODE_ASSIST ) skill_mode = EL_SKILLMODE_ASSIST;		// Assist spirit mode -> Assist spirit skill.
+	else skill_mode = EL_SKILLMODE_PASSIVE;									// Passive spirit mode -> Passive spirit skill.
 
 	// Use a skill inmediately after every change mode.
-	if( mode != EL_SKILLMODE_AGGRESSIVE )
-		elemental_change_mode_ack(ed,mode);
+	if( skill_mode != EL_SKILLMODE_AGGRESSIVE )
+		return elemental_change_mode_ack(ed, skill_mode);
 	return 1;
 }
 
 void elemental_heal(struct elemental_data *ed, int hp, int sp) {
+	if (ed->master == NULL)
+		return;
 	if( hp )
 		clif_elemental_updatestatus(ed->master, SP_HP);
 	if( sp )
@@ -542,7 +537,7 @@ void elemental_heal(struct elemental_data *ed, int hp, int sp) {
 }
 
 int elemental_dead(struct elemental_data *ed) {
-	elemental_delete(ed, 1);
+	elemental_delete(ed);
 	return 0;
 }
 
@@ -555,30 +550,25 @@ int elemental_unlocktarget(struct elemental_data *ed) {
 	return 0;
 }
 
-int elemental_skillnotok(uint16 skill_id, struct elemental_data *ed) {
-	int idx = skill_get_index(skill_id);
+bool elemental_skillnotok(uint16 skill_id, struct elemental_data *ed) {
+	uint16 idx = skill_get_index(skill_id);
 	nullpo_retr(1,ed);
-
-	if (idx == 0)
-		return 1; // invalid skill id
-
-	return skill_isNotOk(skill_id,ed->master);
+	return idx == 0 ? false : skill_isNotOk(skill_id,ed->master); // return false or check if it,s ok for master as well
 }
 
 struct skill_condition elemental_skill_get_requirements(uint16 skill_id, uint16 skill_lv){
 	struct skill_condition req;
-	int idx = skill_get_index(skill_id);
+	uint16 idx = skill_get_index(skill_id);
 
 	memset(&req,0,sizeof(req));
 
 	if( idx == 0 ) // invalid skill id
-  		return req;
-
-	if( skill_lv < 1 || skill_lv > MAX_SKILL_LEVEL )
 		return req;
 
-	req.hp = skill_db[idx].require.hp[skill_lv-1];
-	req.sp = skill_db[idx].require.sp[skill_lv-1];
+	skill_lv = cap_value(skill_lv, 1, MAX_SKILL_LEVEL);
+
+	req.hp = skill_db[idx]->require.hp[skill_lv-1];
+	req.sp = skill_db[idx]->require.sp[skill_lv-1];
 
 	return req;
 }
@@ -639,7 +629,8 @@ static int elemental_ai_sub_timer_activesearch(struct block_list *bl, va_list ap
 
 static int elemental_ai_sub_timer(struct elemental_data *ed, struct map_session_data *sd, unsigned int tick) {
 	struct block_list *target = NULL;
-	int master_dist, view_range, mode;
+	int master_dist, view_range;
+	enum e_mode mode;
 
 	nullpo_ret(ed);
 	nullpo_ret(sd);
@@ -652,18 +643,18 @@ static int elemental_ai_sub_timer(struct elemental_data *ed, struct map_session_
 		int sp = 5;
 
 		switch(ed->vd->class_){
-			case 2115:	case 2118:
-			case 2121:	case 2124:
+			case ELEMENTALID_AGNI_M:	case ELEMENTALID_AQUA_M:
+			case ELEMENTALID_VENTUS_M:	case ELEMENTALID_TERA_M:
 				sp = 8;
 				break;
-			case 2116:	case 2119:
-			case 2122:	case 2125:
+			case ELEMENTALID_AGNI_L:	case ELEMENTALID_AQUA_L:
+			case ELEMENTALID_VENTUS_L:	case ELEMENTALID_TERA_L:
 				sp = 11;
 				break;
 		}
 
 		if( status_get_sp(&sd->bl) < sp ){ // Can't sustain delete it.
-			elemental_delete(sd->ed,0);
+			elemental_delete(sd->ed);
 			return 0;
 		}
 
@@ -759,166 +750,128 @@ static int elemental_ai_timer(int tid, unsigned int tick, int id, intptr_t data)
 	return 0;
 }
 
-int read_elementaldb(void) {
-	FILE *fp;
-	char line[1024], *p;
-	char *str[26];
-	int i, j = 0, k = 0, ele;
+/**
+* Reads Elemental DB lines
+* ID,Sprite_Name,Name,LV,HP,SP,Range1,ATK1,ATK2,DEF,MDEF,STR,AGI,VIT,INT,DEX,LUK,Range2,Range3,Scale,Race,Element,Speed,aDelay,aMotion,dMotion
+*/
+static bool read_elementaldb_sub(char* str[], int columns, int current) {
+	uint16 class_ = atoi(str[0]), i, ele;
 	struct s_elemental_db *db;
 	struct status_data *status;
 
-	sprintf(line, "%s/%s", db_path, "elemental_db.txt");
-	memset(elemental_db,0,sizeof(elemental_db));
+	//Find the ID, already exist or not in elemental_db
+	ARR_FIND(0,elemental_count,i,elemental_db[i].class_ == class_);
+	if (i >= elemental_count)
+		db = &elemental_db[elemental_count];
+	else
+		db = &elemental_db[i];
+	
+	db->class_ = atoi(str[0]);
+	safestrncpy(db->sprite, str[1], NAME_LENGTH);
+	safestrncpy(db->name, str[2], NAME_LENGTH);
+	db->lv = atoi(str[3]);
 
-	fp = fopen(line, "r");
-	if( !fp ) {
-		ShowError("read_elementaldb : can't read elemental_db.txt\n");
-		return -1;
+	status = &db->status;
+	db->vd.class_ = db->class_;
+
+	status->max_hp = atoi(str[4]);
+	status->max_sp = atoi(str[5]);
+	status->rhw.range = atoi(str[6]);
+	status->rhw.atk = atoi(str[7]);
+	status->rhw.atk2 = atoi(str[8]);
+	status->def = atoi(str[9]);
+	status->mdef = atoi(str[10]);
+	status->str = atoi(str[11]);
+	status->agi = atoi(str[12]);
+	status->vit = atoi(str[13]);
+	status->int_ = atoi(str[14]);
+	status->dex = atoi(str[15]);
+	status->luk = atoi(str[16]);
+	db->range2 = atoi(str[17]);
+	db->range3 = atoi(str[18]);
+	status->size = atoi(str[19]);
+	status->race = atoi(str[20]);
+
+	ele = atoi(str[21]);
+	status->def_ele = ele%20;
+	status->ele_lv = (unsigned char)floor(ele/20.);
+	if( !CHK_ELEMENT(status->def_ele) ) {
+		ShowWarning("read_elementaldb_sub: Elemental %d has invalid element type %d (max element is %d)\n", db->class_, status->def_ele, ELE_ALL - 1);
+		status->def_ele = ELE_NEUTRAL;
+	}
+	if( !CHK_ELEMENT_LEVEL(status->ele_lv) ) {
+		ShowWarning("read_elementaldb_sub: Elemental %d has invalid element level %d (max is %d)\n", db->class_, status->ele_lv, MAX_ELE_LEVEL);
+		status->ele_lv = 1;
 	}
 
-	while( fgets(line, sizeof(line), fp) && j < MAX_ELEMENTAL_CLASS ) {
-		k++;
-		if( line[0] == '/' && line[1] == '/' )
-			continue;
+	status->aspd_rate = 1000;
+	status->speed = atoi(str[22]);
+	status->adelay = atoi(str[23]);
+	status->amotion = atoi(str[24]);
+	status->dmotion = atoi(str[25]);
 
-		if( line[0] == '\0' || line[0] == '\n' || line[0] == '\r')
-			continue;
-
-		i = 0;
-		p = strtok(line, ",");
-		while( p != NULL && i < 26 ) {
-			str[i++] = p;
-			p = strtok(NULL, ",");
-		}
-		if( i < 26 ) {
-			ShowError("read_elementaldb : Incorrect number of columns at elemental_db.txt line %d.\n", k);
-			continue;
-		}
-
-		db = &elemental_db[j];
-		db->class_ = atoi(str[0]);
-		safestrncpy(db->sprite, str[1], NAME_LENGTH);
-		safestrncpy(db->name, str[2], NAME_LENGTH);
-		db->lv = atoi(str[3]);
-
-		status = &db->status;
-		db->vd.class_ = db->class_;
-
-		status->max_hp = atoi(str[4]);
-		status->max_sp = atoi(str[5]);
-		status->rhw.range = atoi(str[6]);
-		status->rhw.atk = atoi(str[7]);
-		status->rhw.atk2 = atoi(str[8]);
-		status->def = atoi(str[9]);
-		status->mdef = atoi(str[10]);
-		status->str = atoi(str[11]);
-		status->agi = atoi(str[12]);
-		status->vit = atoi(str[13]);
-		status->int_ = atoi(str[14]);
-		status->dex = atoi(str[15]);
-		status->luk = atoi(str[16]);
-		db->range2 = atoi(str[17]);
-		db->range3 = atoi(str[18]);
-		status->size = atoi(str[19]);
-		status->race = atoi(str[20]);
-
-		ele = atoi(str[21]);
-		status->def_ele = ele%10;
-		status->ele_lv = ele/20;
-		if( status->def_ele >= ELE_MAX ) {
-			ShowWarning("Elemental %d has invalid element type %d (max element is %d)\n", db->class_, status->def_ele, ELE_MAX - 1);
-			status->def_ele = ELE_NEUTRAL;
-		}
-		if( status->ele_lv < 1 || status->ele_lv > 4 ) {
-			ShowWarning("Elemental %d has invalid element level %d (max is 4)\n", db->class_, status->ele_lv);
-			status->ele_lv = 1;
-		}
-
-		status->aspd_rate = 1000;
-		status->speed = atoi(str[22]);
-		status->adelay = atoi(str[23]);
-		status->amotion = atoi(str[24]);
-		status->dmotion = atoi(str[25]);
-
-		j++;
-	}
-
-	fclose(fp);
-	ShowStatus("Done reading '"CL_WHITE"%d"CL_RESET"' elementals in '"CL_WHITE"db/elemental_db.txt"CL_RESET"'.\n",j);
-
-	return 0;
+	if (i >= elemental_count)
+		elemental_count++;
+	return true;
 }
 
-int read_elemental_skilldb(void) {
-	FILE *fp;
-	char line[1024], *p;
-	char *str[4];
+void read_elementaldb(void) {
+	const char *filename[] = { "elemental_db.txt", DBIMPORT"/elemental_db.txt" };
+	uint8 i;
+
+	elemental_count = 0;
+	memset(elemental_db, 0, sizeof(elemental_db));
+	for(i = 0; i<ARRAYLENGTH(filename); i++){
+		sv_readdb(db_path, filename[i], ',', 26, 26, -1, &read_elementaldb_sub, i);
+	}
+}
+
+/**
+* Reads Elemental Skill DB lines
+* ElementalID,SkillID,SkillLevel,ReqMode
+*/
+static bool read_elemental_skilldb_sub(char* str[], int columns, int current) {
+	uint16 class_ = atoi(str[0]), skill_id, skill_lv, skillmode;
+	uint8 i;
 	struct s_elemental_db *db;
-	int i, j = 0, k = 0, class_;
-	uint16 skill_id, skill_lv;
-	int skillmode;
 
-	sprintf(line, "%s/%s", db_path, "elemental_skill_db.txt");
-	fp = fopen(line, "r");
-	if( !fp ) {
-		ShowError("read_elemental_skilldb : can't read elemental_skill_db.txt\n");
-		return -1;
+	ARR_FIND(0, MAX_ELEMENTAL_CLASS, i, class_ == elemental_db[i].class_);
+	if( i == MAX_ELEMENTAL_CLASS ) {
+		ShowError("read_elemental_skilldb_sub: Class not found in elemental_db for skill entry, line %d.\n", current);
+		return false;
 	}
 
-	while( fgets(line, sizeof(line), fp) ) {
-		k++;
-		if( line[0] == '/' && line[1] == '/' )
-			continue;
-
-		if( line[0] == '\0' || line[0] == '\n' || line[0] == '\r')
-			continue;
-
-		i = 0;
-		p = strtok(line, ",");
-		while( p != NULL && i < 4 ) {
-			str[i++] = p;
-			p = strtok(NULL, ",");
-		}
-		if( i < 4 ) {
-			ShowError("read_elemental_skilldb : Incorrect number of columns at elemental_skill_db.txt line %d.\n", k);
-			continue;
-		}
-
-		class_ = atoi(str[0]);
-		ARR_FIND(0, MAX_ELEMENTAL_CLASS, i, class_ == elemental_db[i].class_);
-		if( i == MAX_ELEMENTAL_CLASS ) {
-			ShowError("read_elemental_skilldb : Class not found in elemental_db for skill entry, line %d.\n", k);
-			continue;
-		}
-
-		skill_id = atoi(str[1]);
-		if( skill_id < EL_SKILLBASE || skill_id >= EL_SKILLBASE + MAX_ELEMENTALSKILL ) {
-			ShowError("read_elemental_skilldb : Skill out of range, line %d.\n", k);
-			continue;
-		}
-
-		db = &elemental_db[i];
-		skill_lv = atoi(str[2]);
-
-		skillmode = atoi(str[3]);
-		if( skillmode < EL_SKILLMODE_PASIVE || skillmode > EL_SKILLMODE_AGGRESSIVE ) {
-			ShowError("read_elemental_skilldb : Skillmode out of range, line %d.\n",k);
-			continue;
-		}
-		ARR_FIND( 0, MAX_ELESKILLTREE, i, db->skill[i].id == 0 || db->skill[i].id == skill_id );
-		if( i == MAX_ELESKILLTREE ) {
-			ShowWarning("Unable to load skill %d into Elemental %d's tree. Maximum number of skills per elemental has been reached.\n", skill_id, class_);
-			continue;
-		}
-		db->skill[i].id = skill_id;
-		db->skill[i].lv = skill_lv;
-		db->skill[i].mode = skillmode;
-		j++;
+	skill_id = atoi(str[1]);
+	if( !SKILL_CHK_ELEM(skill_id) ) {
+		ShowError("read_elemental_skilldb_sub: Invalid Elemental skill '%d'.\n", skill_id);
+		return false;
 	}
 
-	fclose(fp);
-	ShowStatus("Done reading '"CL_WHITE"%d"CL_RESET"' entries in '"CL_WHITE"db/elemental_skill_db.txt"CL_RESET"'.\n",j);
-	return 0;
+	db = &elemental_db[i];
+	skill_lv = atoi(str[2]);
+
+	skillmode = atoi(str[3]);
+	if( skillmode < EL_SKILLMODE_PASSIVE || skillmode > EL_SKILLMODE_AGGRESSIVE ) {
+		ShowError("read_elemental_skilldb_sub: Skillmode out of range, line %d.\n",current);
+		return false;
+	}
+	ARR_FIND( 0, MAX_ELESKILLTREE, i, db->skill[i].id == 0 || db->skill[i].id == skill_id );
+	if( i == MAX_ELESKILLTREE ) {
+		ShowWarning("read_elemental_skilldb_sub: Unable to load skill %d into Elemental %d's tree. Maximum number of skills per elemental has been reached.\n", skill_id, class_);
+		return false;
+	}
+	db->skill[i].id = skill_id;
+	db->skill[i].lv = skill_lv;
+	db->skill[i].mode = skillmode;
+	return true;
+}
+
+void read_elemental_skilldb(void) {
+	const char *filename[] = { "elemental_skill_db.txt", DBIMPORT"/elemental_skill_db.txt" };
+	uint8 i;
+	for(i = 0; i<ARRAYLENGTH(filename); i++){
+		sv_readdb(db_path, filename[i], ',', 4, 4, -1, &read_elemental_skilldb_sub, i);
+	}
 }
 
 void reload_elementaldb(void) {
@@ -930,14 +883,12 @@ void reload_elemental_skilldb(void) {
 	read_elemental_skilldb();
 }
 
-int do_init_elemental(void) {
+void do_init_elemental(void) {
 	read_elementaldb();
 	read_elemental_skilldb();
 
 	add_timer_func_list(elemental_ai_timer,"elemental_ai_timer");
 	add_timer_interval(gettick()+MIN_ELETHINKTIME,elemental_ai_timer,0,0,MIN_ELETHINKTIME);
-
-	return 0;
 }
 
 void do_final_elemental(void) {

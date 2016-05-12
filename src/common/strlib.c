@@ -1,14 +1,12 @@
 // Copyright (c) Athena Dev Teams - Licensed under GNU GPL
 // For more information, see LICENCE in the main folder
 
-#include "../common/cbasetypes.h"
-#include "../common/malloc.h"
-#include "../common/showmsg.h"
+#include "cbasetypes.h"
+#include "malloc.h"
+#include "showmsg.h"
 #include "strlib.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 
 
 #define J_MAX_MALLOC_SIZE 65535
@@ -155,14 +153,15 @@ char* trim(char* str)
 // that pointer with the returned value, since the original pointer must be
 // deallocated using the same allocator with which it was allocated.  The return
 // value must NOT be deallocated using free() etc.
-char *trim2(char *str,char flag){
-	char *end;
-	if(flag&1){ // Trim leading space
+char *trim2(char *str,char flag) {
+	if(flag&1) { // Trim leading space
 		while(isspace(*str)) str++;
 		if(*str == 0)  // All spaces?
 			return str;
 	}
-	if(flag&2){ // Trim trailing space
+	if(flag&2) { // Trim trailing space
+		char *end;
+
 		end = str + strlen(str) - 1;
 		while(end > str && isspace(*end)) end--;
 		*(end+1) = 0; // Write new null terminator
@@ -968,26 +967,29 @@ const char* skip_escaped_c(const char* p)
 }
 
 
-/// Opens and parses a file containing delim-separated columns, feeding them to the specified callback function row by row.
-/// Tracks the progress of the operation (current line number, number of successfully processed rows).
-/// Returns 'true' if it was able to process the specified file, or 'false' if it could not be read.
-///
-/// @param directory Directory
-/// @param filename File to process
-/// @param delim Field delimiter
-/// @param mincols Minimum number of columns of a valid row
-/// @param maxcols Maximum number of columns of a valid row
-/// @param parseproc User-supplied row processing function
-/// @return true on success, false if file could not be opened
-bool sv_readdb(const char* directory, const char* filename, char delim, int mincols, int maxcols, int maxrows, bool (*parseproc)(char* fields[], int columns, int current))
+/**
+ * Opens and parses a file containing delim-separated columns, feeding them to the specified callback function row by row.
+ * Tracks the progress of the operation (current line number, number of successfully processed rows).
+ * Returns 'true' if it was able to process the specified file, or 'false' if it could not be read.
+ * @param directory : Directory
+ * @param filename : filename File to process
+ * @param delim : delim Field delimiter
+ * @param mincols : mincols Minimum number of columns of a valid row
+ * @param maxcols : maxcols Maximum number of columns of a valid row
+ * @param maxrows : maxcols Maximum number of columns of a valid row
+ * @param parseproc : parseproc User-supplied row processing function
+ * @param silent : should we display error if file not found ?
+ * @return true on success, false if file could not be opened
+ */
+bool sv_readdb(const char* directory, const char* filename, char delim, int mincols, int maxcols, int maxrows, bool (*parseproc)(char* fields[], int columns, int current), bool silent)
 {
 	FILE* fp;
 	int lines = 0;
 	int entries = 0;
 	char** fields; // buffer for fields ([0] is reserved)
-	int columns, fields_length;
-	char path[1024], *line, colsize[512];
-	char* match;
+	int columns, nb_cols;
+	char path[1024], *line;
+	const short colsize=512;
 
 	snprintf(path, sizeof(path), "%s/%s", directory, filename);
 
@@ -995,18 +997,19 @@ bool sv_readdb(const char* directory, const char* filename, char delim, int minc
 	fp = fopen(path, "r");
 	if( fp == NULL )
 	{
-		ShowError("sv_readdb: can't read %s\n", path);
+		if(silent == 0) ShowError("sv_readdb: can't read %s\n", path);
 		return false;
 	}
 
 	// allocate enough memory for the maximum requested amount of columns plus the reserved one
-	fields_length = maxcols+1;
-	fields = (char**)aMalloc(fields_length*sizeof(char*));
-	line = (char*)aMalloc(fields_length*sizeof(colsize));
+	nb_cols = maxcols+1;
+	fields = (char**)aMalloc(nb_cols*sizeof(char*));
+	line = (char*)aMalloc(nb_cols*colsize);
 
 	// process rows one by one
-	while( fgets(line, fields_length*sizeof(colsize), fp) )
+	while( fgets(line, maxcols*colsize, fp) )
 	{
+		char *match;
 		lines++;
 
 		if( ( match = strstr(line, "//") ) != NULL )
@@ -1019,7 +1022,7 @@ bool sv_readdb(const char* directory, const char* filename, char delim, int minc
 		if( line[0] == '\0' || line[0] == '\n' || line[0] == '\r')
 			continue;
 
-		columns = sv_split(line, strlen(line), 0, delim, fields, fields_length, (e_svopt)(SV_TERMINATE_LF|SV_TERMINATE_CRLF));
+		columns = sv_split(line, strlen(line), 0, delim, fields, nb_cols, (e_svopt)(SV_TERMINATE_LF|SV_TERMINATE_CRLF));
 
 		if( columns < mincols )
 		{
@@ -1041,6 +1044,8 @@ bool sv_readdb(const char* directory, const char* filename, char delim, int minc
 		if( !parseproc(fields+1, columns, entries) )
 		{
 			ShowError("sv_readdb: Could not process contents of line %d of \"%s\".\n", lines, path);
+                        //perhaps call a provided function to clean entries if we have fail
+                        //clearproc(fields+1, columns, entries)
 			continue; // invalid row contents
 		}
 
@@ -1094,10 +1099,9 @@ int StringBuf_Printf(StringBuf* self, const char* fmt, ...)
 /// Appends the result of vprintf to the StringBuf
 int StringBuf_Vprintf(StringBuf* self, const char* fmt, va_list ap)
 {
-	int n, size, off;
-
 	for(;;)
 	{
+		int n, size, off;
 		va_list apcopy;
 		/* Try to print in the allocated space. */
 		size = self->max_ - (self->ptr_ - self->buf_);

@@ -14,12 +14,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/cbasetypes.h"
-#include "../common/showmsg.h"
-#include "../common/db.h"
-#include "../common/malloc.h"
+#include "cbasetypes.h"
+#include "showmsg.h"
+#include "db.h"
+#include "malloc.h"
 
-#include "../common/raconf.h"
+#include "raconf.h"
 
 #define SECTION_LEN 32
 #define VARNAME_LEN 64
@@ -76,8 +76,6 @@ static struct conf_value *makeValue(const char *key, char *val, size_t val_len){
 	else if((val_len == 2) && (strncmpi("no", val, 2) == 0))
 		v->bval = false;
 	else if((val_len == 3) && (strncmpi("non", val, 3) == 0))
-		v->bval = false;
-	else if((val_len == 2) && (strncmpi("no", val, 2) == 0))
 		v->bval = false;
 	else if((val_len == 4) && (strncmpi("nein", val, 4) == 0))
 		v->bval = false;

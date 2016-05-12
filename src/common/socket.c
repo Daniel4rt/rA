@@ -1,31 +1,24 @@
 // Copyright (c) Athena Dev Teams - Licensed under GNU GPL
 // For more information, see LICENCE in the main folder
 
-#include "../common/cbasetypes.h"
-#include "../common/mmo.h"
-#include "../common/timer.h"
-#include "../common/malloc.h"
-#include "../common/showmsg.h"
-#include "../common/strlib.h"
-#include "../config/core.h"
+#include "cbasetypes.h"
+#include "mmo.h"
+#include "timer.h"
+#include "malloc.h"
+#include "showmsg.h"
+#include "strlib.h"
 #include "socket.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
 
 #ifdef WIN32
-	#include "../common/winapi.h"
+	#include "winapi.h"
 #else
 	#include <errno.h>
-	#include <sys/socket.h>
-	#include <netinet/in.h>
-	#include <netinet/tcp.h>
+#include <netinet/tcp.h>
 	#include <net/if.h>
 	#include <unistd.h>
-	#include <sys/time.h>
-	#include <sys/ioctl.h>
+#include <sys/ioctl.h>
 	#include <netdb.h>
 	#include <arpa/inet.h>
 
@@ -219,7 +212,11 @@ int naddr_ = 0;   // # of ip addresses
 
 // Maximum packet size in bytes, which the client is able to handle.
 // Larger packets cause a buffer overflow and stack corruption.
-static size_t socket_max_client_packet = 24576;
+#if PACKETVER < 20131223
+static size_t socket_max_client_packet = 0x6000;
+#else
+static size_t socket_max_client_packet = USHRT_MAX;
+#endif
 
 #ifdef SHOW_SERVER_STATS
 // Data I/O statistics
@@ -1089,9 +1086,9 @@ int access_ipmask(const char* str, AccessControl* acc)
 		unsigned int a[4];
 		unsigned int m[4];
 		int n;
-		if( ((n=sscanf(str,"%u.%u.%u.%u/%u.%u.%u.%u",a,a+1,a+2,a+3,m,m+1,m+2,m+3)) != 8 && // not an ip + standard mask
-				(n=sscanf(str,"%u.%u.%u.%u/%u",a,a+1,a+2,a+3,m)) != 5 && // not an ip + bit mask
-				(n=sscanf(str,"%u.%u.%u.%u",a,a+1,a+2,a+3)) != 4 ) || // not an ip
+		if( ((n=sscanf(str,"%3u.%3u.%3u.%3u/%3u.%3u.%3u.%3u",a,a+1,a+2,a+3,m,m+1,m+2,m+3)) != 8 && // not an ip + standard mask
+				(n=sscanf(str,"%3u.%3u.%3u.%3u/%3u",a,a+1,a+2,a+3,m)) != 5 && // not an ip + bit mask
+				(n=sscanf(str,"%3u.%3u.%3u.%3u",a,a+1,a+2,a+3)) != 4 ) || // not an ip
 				a[0] > 255 || a[1] > 255 || a[2] > 255 || a[3] > 255 || // invalid ip
 				(n == 8 && (m[0] > 255 || m[1] > 255 || m[2] > 255 || m[3] > 255)) || // invalid standard mask
 				(n == 5 && m[0] > 32) ){ // invalid bit mask
@@ -1139,7 +1136,7 @@ int socket_config_read(const char* cfgName)
 	{
 		if(line[0] == '/' && line[1] == '/')
 			continue;
-		if(sscanf(line, "%[^:]: %[^\r\n]", w1, w2) != 2)
+		if(sscanf(line, "%1023[^:]: %1023[^\r\n]", w1, w2) != 2)
 			continue;
 
 		if (!strcmpi(w1, "stall_time")) {
@@ -1178,8 +1175,6 @@ int socket_config_read(const char* cfgName)
 			ddos_autoreset = atoi(w2);
 		else if (!strcmpi(w1,"debug"))
 			access_debug = config_switch(w2);
-		else if (!strcmpi(w1,"socket_max_client_packet"))
-			socket_max_client_packet = strtoul(w2, NULL, 0);
 #endif
 		else if (!strcmpi(w1, "import"))
 			socket_config_read(w2);
@@ -1220,7 +1215,9 @@ void socket_final(void)
 	// session[0]
 	aFree(session[0]->rdata);
 	aFree(session[0]->wdata);
+	aFree(session[0]->session_data);
 	aFree(session[0]);
+	session[0] = NULL;
 }
 
 /// Closes a socket.
@@ -1247,9 +1244,7 @@ int socket_getips(uint32* ips, int max)
 
 #ifdef WIN32
 	{
-		char fullhost[255];
-		u_long** a;
-		struct hostent* hent;
+		char fullhost[255];	
 
 		// XXX This should look up the local IP addresses in the registry
 		// instead of calling gethostbyname. However, the way IP addresses
@@ -1262,24 +1257,23 @@ int socket_getips(uint32* ips, int max)
 		}
 		else
 		{
+			u_long** a;
+			struct hostent* hent;
 			hent = gethostbyname(fullhost);
 			if( hent == NULL ){
 				ShowError("socket_getips: Cannot resolve our own hostname to an IP address\n");
 				return 0;
 			}
 			a = (u_long**)hent->h_addr_list;
-			for( ; a[num] != NULL && num < max; ++num)
+			for( ;num < max && a[num] != NULL; ++num)
 				ips[num] = (uint32)ntohl(*a[num]);
 		}
 	}
 #else // not WIN32
 	{
-		int pos;
 		int fd;
 		char buf[2*16*sizeof(struct ifreq)];
 		struct ifconf ic;
-		struct ifreq* ir;
-		struct sockaddr_in* a;
 		u_long ad;
 
 		fd = sSocket(AF_INET, SOCK_STREAM, 0);
@@ -1297,10 +1291,11 @@ int socket_getips(uint32* ips, int max)
 		}
 		else
 		{
+			int pos;
 			for( pos=0; pos < ic.ifc_len && num < max; )
 			{
-				ir = (struct ifreq*)(buf+pos);
-				a = (struct sockaddr_in*) &(ir->ifr_addr);
+				struct ifreq* ir = (struct ifreq*)(buf+pos);
+				struct sockaddr_in*a = (struct sockaddr_in*) &(ir->ifr_addr);
 				if( a->sin_family == AF_INET ){
 					ad = ntohl(a->sin_addr.s_addr);
 					if( ad != INADDR_LOOPBACK && ad != INADDR_ANY )
@@ -1389,7 +1384,7 @@ void socket_init(void)
 
 	// session[0] is now currently used for disconnected sessions of the map server, and as such,
 	// should hold enough buffer (it is a vacuum so to speak) as it is never flushed. [Skotlex]
-	create_session(0, null_recv, null_send, null_parse);
+	create_session(0, null_recv, null_send, null_parse); //FIXME this is causing leak
 
 #ifndef MINICORE
 	// Delete old connection history every 5 minutes

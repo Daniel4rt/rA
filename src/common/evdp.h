@@ -1,7 +1,7 @@
 #ifndef _rA_EVDP_H_
 #define _rA_EVDP_H_
 
-#include "../common/cbasetypes.h"
+#include "cbasetypes.h"
 
 typedef struct EVDP_DATA EVDP_DATA;
 
@@ -136,7 +136,7 @@ bool evdp_outgoingconnection_established(int32 fd, EVDP_DATA *ep);
  *	the connection must be already added (as client or listener)
  * 
  *
- * @return sucess indicator
+ * @return success indicator
  */
 bool evdp_writable_add(int32 fd, EVDP_DATA *ep);
 

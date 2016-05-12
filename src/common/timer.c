@@ -1,28 +1,27 @@
 // Copyright (c) Athena Dev Teams - Licensed under GNU GPL
 // For more information, see LICENCE in the main folder
 
-#include "../common/cbasetypes.h"
-#include "../common/db.h"
-#include "../common/malloc.h"
-#include "../common/showmsg.h"
-#include "../common/utils.h"
+#include "cbasetypes.h"
+#include "db.h"
+#include "malloc.h"
+#include "showmsg.h"
+#include "utils.h"
+#include "nullpo.h"
 #include "timer.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #ifdef WIN32
-#include "../common/winapi.h" // GetTickCount()
+#include "winapi.h" // GetTickCount()
 #else
-#include <unistd.h>
-#include <sys/time.h> // struct timeval, gettimeofday()
 #endif
 
 // If the server can't handle processing thousands of monsters
 // or many connected clients, please increase TIMER_MIN_INTERVAL.
-#define TIMER_MIN_INTERVAL 50
+// The official interval of 20ms is however strongly recommended,
+// as it is needed for perfect server-client syncing.
+#define TIMER_MIN_INTERVAL 20
 #define TIMER_MAX_INTERVAL 1000
 
 // timers (array)
@@ -109,28 +108,28 @@ static __inline uint64 _rdtsc(){
 	} t;
 
 	asm volatile("rdtsc":"=a"(t.dw[0]), "=d"(t.dw[1]) );
-	
+
 	return t.qw;
 }
 
 static void rdtsc_calibrate(){
 	uint64 t1, t2;
 	int32 i;
-	
+
 	ShowStatus("Calibrating Timer Source, please wait... ");
-	
+
 	RDTSC_CLOCK = 0;
-	
+
 	for(i = 0; i < 5; i++){
 		t1 = _rdtsc();
 		usleep(1000000); //1000 MS
 		t2 = _rdtsc();
-		RDTSC_CLOCK += (t2 - t1) / 1000; 
+		RDTSC_CLOCK += (t2 - t1) / 1000;
 	}
 	RDTSC_CLOCK /= 5;
-	
+
 	RDTSC_BEGINTICK = _rdtsc();
-	
+
 	ShowMessage(" done. (Frequency: %u Mhz)\n", (uint32)(RDTSC_CLOCK/1000) );
 }
 
@@ -243,7 +242,7 @@ static int acquire_timer(void)
 int add_timer(unsigned int tick, TimerFunc func, int id, intptr_t data)
 {
 	int tid;
-	
+
 	tid = acquire_timer();
 	timer_data[tid].tick     = tick;
 	timer_data[tid].func     = func;
@@ -267,7 +266,7 @@ int add_timer_interval(unsigned int tick, TimerFunc func, int id, intptr_t data,
 		ShowError("add_timer_interval: invalid interval (tick=%u %p[%s] id=%d data=%d diff_tick=%d)\n", tick, func, search_timer_func_list(func), id, data, DIFF_TICK(tick, gettick()));
 		return INVALID_TIMER;
 	}
-	
+
 	tid = acquire_timer();
 	timer_data[tid].tick     = tick;
 	timer_data[tid].func     = func;
@@ -320,7 +319,7 @@ int addtick_timer(int tid, unsigned int tick)
 int settick_timer(int tid, unsigned int tick)
 {
 	size_t i;
-	
+
 	// search timer position
 	ARR_FIND(0, BHEAP_LENGTH(timer_heap), i, BHEAP_DATA(timer_heap)[i] == tid);
 	if( i == BHEAP_LENGTH(timer_heap) )
@@ -404,6 +403,104 @@ int do_timer(unsigned int tick)
 unsigned long get_uptime(void)
 {
 	return (unsigned long)difftime(time(NULL), start_time);
+}
+
+/**
+ * Converting a timestamp is a srintf according to format
+ * safefr then strftime as it ensure \0 at end of string
+ * @param str, pointer to the destination string
+ * @param size, max length of the string
+ * @param timestamp, see unix epoch
+ * @param format, format to convert timestamp on, see strftime format
+ * @return the string of timestamp
+ */
+const char* timestamp2string(char* str, size_t size, time_t timestamp, const char* format){
+	size_t len = strftime(str, size, format, localtime(&timestamp));
+	memset(str + len, '\0', size - len);
+	return str;
+}
+
+/*
+ * Split given timein into year, month, day, hour, minute, second
+ */
+void split_time(int timein, int* year, int* month, int* day, int* hour, int* minute, int *second) {
+	const int factor_min = 60;
+	const int factor_hour = factor_min*60;
+	const int factor_day = factor_hour*24;
+	const int factor_month = 2629743; // Approx  (30.44 days) 
+	const int factor_year = 31556926; // Approx (365.24 days)
+
+	*year = timein/factor_year;
+	timein -= *year*factor_year;
+	*month = timein/factor_month;
+	timein -= *month*factor_month;
+	*day = timein/factor_day;
+	timein -= *day*factor_day;
+	*hour = timein/factor_hour;
+	timein -= *hour*factor_hour;
+	*minute = timein/factor_min;
+	timein -= *minute*factor_min;
+	*second = timein;
+
+	*year = max(0,*year);
+	*month = max(0,*month);
+	*day = max(0,*day);
+	*hour = max(0,*hour);
+	*minute = max(0,*minute);
+	*second = max(0,*second);
+}
+
+/*
+ * Create a "timestamp" with the given argument
+ */
+double solve_time(char* modif_p) {
+	double totaltime = 0;
+	struct tm then_tm;
+	time_t now = time(NULL);
+	time_t then = now;
+	then_tm = *localtime(&then);
+	
+	nullpo_retr(0,modif_p);
+
+	while (modif_p[0] != '\0') {
+		int value = atoi(modif_p);
+		if (value == 0)
+			modif_p++;
+		else {
+			if (modif_p[0] == '-' || modif_p[0] == '+')
+				modif_p++;
+			while (modif_p[0] >= '0' && modif_p[0] <= '9')
+				modif_p++;
+			if (modif_p[0] == 's') {
+				then_tm.tm_sec += value;
+				modif_p++;
+			} else if (modif_p[0] == 'n') {
+				then_tm.tm_min += value;
+				modif_p++;
+			} else if (modif_p[0] == 'm' && modif_p[1] == 'n') {
+				then_tm.tm_min += value;
+				modif_p = modif_p + 2;
+			} else if (modif_p[0] == 'h') {
+				then_tm.tm_hour += value;
+				modif_p++;
+			} else if (modif_p[0] == 'd' || modif_p[0] == 'j') {
+				then_tm.tm_mday += value;
+				modif_p++;
+			} else if (modif_p[0] == 'm') {
+				then_tm.tm_mon += value;
+				modif_p++;
+			} else if (modif_p[0] == 'y' || modif_p[0] == 'a') {
+				then_tm.tm_year += value;
+				modif_p++;
+			} else if (modif_p[0] != '\0') {
+				modif_p++;
+			}
+		}
+	}
+	then = mktime(&then_tm);
+	totaltime = difftime(then,now);
+
+	return totaltime;
 }
 
 void timer_init(void)

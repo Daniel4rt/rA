@@ -30,7 +30,7 @@ int mapif_achievement_fromsql(int char_id, struct s_achievement ad[])
 
 	memset(&tmp_ad,0,sizeof(tmp_ad));
 
-	if( SQL_ERROR == SqlStmt_Prepare(stmt, "SELECT `id`, `completed`, `count1`, `count2`, `count3`, `count4`, `count5` FROM `%s` WHERE `char_id` = ? LIMIT %d", achievement_db, ACHIEVEMENT_MAX)
+	if( SQL_ERROR == SqlStmt_Prepare(stmt, "SELECT `id`, `completed`, `count1`, `count2`, `count3`, `count4`, `count5` FROM `%s` WHERE `char_id` = ? LIMIT %d", schema_config.achievement_db, ACHIEVEMENT_MAX)
 	||	SQL_ERROR == SqlStmt_BindParam(stmt, 0, SQLDT_INT, &char_id, 0)
 	||	SQL_ERROR == SqlStmt_Execute(stmt)
 	||	SQL_ERROR == SqlStmt_BindColumn(stmt, 0, SQLDT_INT,  &tmp_ad.id, 0, NULL, NULL)
@@ -52,7 +52,7 @@ int mapif_achievement_fromsql(int char_id, struct s_achievement ad[])
 //Delete Achievement
 bool mapif_achievement_delete(int char_id, int id)
 {
-	if ( SQL_ERROR == Sql_Query(sql_handle, "DELETE FROM `%s` WHERE `id` = '%d' AND `char_id` = '%d'", achievement_db, id, char_id) )
+	if ( SQL_ERROR == Sql_Query(sql_handle, "DELETE FROM `%s` WHERE `id` = '%d' AND `char_id` = '%d'", schema_config.achievement_db, id, char_id) )
 	{
 		Sql_ShowDebug(sql_handle);
 		return false;
@@ -64,7 +64,7 @@ bool mapif_achievement_delete(int char_id, int id)
 //Add Achievement
 bool mapif_achievement_add(int char_id, struct s_achievement ad)
 {
-	if ( SQL_ERROR == Sql_Query(sql_handle, "INSERT INTO `%s` (`id`, `char_id`, `completed`, `count1`, `count2`, `count3`, `count4`, `count5`) VALUES ('%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d')", achievement_db, ad.id, char_id, ad.completed, ad.count[0], ad.count[1], ad.count[2], ad.count[3], ad.count[4]) )
+	if ( SQL_ERROR == Sql_Query(sql_handle, "INSERT INTO `%s` (`id`, `char_id`, `completed`, `count1`, `count2`, `count3`, `count4`, `count5`) VALUES ('%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d')", schema_config.achievement_db, ad.id, char_id, ad.completed, ad.count[0], ad.count[1], ad.count[2], ad.count[3], ad.count[4]) )
 	{
 		Sql_ShowDebug(sql_handle);
 		return false;
@@ -76,7 +76,7 @@ bool mapif_achievement_add(int char_id, struct s_achievement ad)
 //Update Achievement
 bool mapif_achievement_update(int char_id, struct s_achievement ad)
 {
-	if ( SQL_ERROR == Sql_Query(sql_handle, "UPDATE `%s` SET `completed`='%d', `count1`='%d', `count2`='%d', `count3`='%d', `count4`='%d', `count5`='%d' WHERE `id` = '%d' AND `char_id` = '%d'", achievement_db, ad.completed, ad.count[0], ad.count[1], ad.count[2], ad.count[3], ad.count[4], ad.id, char_id) )
+	if ( SQL_ERROR == Sql_Query(sql_handle, "UPDATE `%s` SET `completed`='%d', `count1`='%d', `count2`='%d', `count3`='%d', `count4`='%d', `count5`='%d' WHERE `id` = '%d' AND `char_id` = '%d'", schema_config.achievement_db, ad.completed, ad.count[0], ad.count[1], ad.count[2], ad.count[3], ad.count[4], ad.id, char_id) )
 	{
 		Sql_ShowDebug(sql_handle);
 		return false;
